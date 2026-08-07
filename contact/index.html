@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Get help with Asaloon. Contact the Asaloon support team at support@asaloon.com." />
+    <meta name="robots" content="index,follow" />
+    <title>Contact Support | Asaloon</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="page-nav container">
+      <a href="/" class="brand">Asaloon</a>
+      <a href="/" class="back-link">← Back to Home</a>
+    </header>
+
+    <main class="page container">
+      <h1>Contact Support</h1>
+      <p class="updated">Need help with Asaloon? Send us a message and we'll get back to you.</p>
+
+      <div class="contact-block">
+        <p>Email: <a href="mailto:support@asaloon.com">support@asaloon.com</a></p>
+        <p>Website: <a href="https://asaloon.com">https://asaloon.com</a></p>
+      </div>
+
+      <h2>Send a message</h2>
+      <form class="support-form" id="supportForm" novalidate>
+        <label>
+          Name
+          <input type="text" name="name" autocomplete="name" required />
+        </label>
+        <label>
+          Email
+          <input type="email" name="email" autocomplete="email" required />
+        </label>
+        <label>
+          Subject
+          <input type="text" name="subject" required />
+        </label>
+        <label>
+          Message
+          <textarea name="message" required></textarea>
+        </label>
+        <p class="field-error" id="formError" role="alert"></p>
+        <button type="submit" class="btn btn-primary">Send Message</button>
+      </form>
+
+      <p class="form-note">Pressing <strong>Send Message</strong> opens your email app with the details filled in, addressed to support@asaloon.com. You'll need to press send there to deliver it. If your device has no email app configured, write to <a href="mailto:support@asaloon.com">support@asaloon.com</a> directly.</p>
+    </main>
+
+    <footer class="page-footer">
+      <div class="container">
+        <a href="/">Home</a>
+        <a href="/privacy/">Privacy Policy</a>
+        <a href="/terms/">Terms of Service</a>
+        <a href="/contact/">Contact Support</a>
+        <p class="copyright">© 2026 Asaloon</p>
+      </div>
+    </footer>
+
+    <script src="/script.js"></script>
+  </body>
+</html>
