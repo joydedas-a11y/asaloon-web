@@ -57,6 +57,79 @@ if (storeButtons.length) {
   });
 }
 
+// Contact modal. The trigger is a real link to /contact/, so it still works
+// if this script fails to load; we only intercept the click when we can show
+// the dialog instead.
+const contactModal = document.querySelector('#contactModal');
+const contactTriggers = document.querySelectorAll('[data-contact-modal]');
+
+if (contactModal && contactTriggers.length) {
+  const panel = contactModal.querySelector('.modal-panel');
+  const closeButton = contactModal.querySelector('.modal-close');
+  let lastFocused = null;
+
+  const openModal = () => {
+    lastFocused = document.activeElement;
+    contactModal.hidden = false;
+    document.body.style.overflow = 'hidden';
+    // Let the browser paint the hidden state once so the transition runs.
+    requestAnimationFrame(() => contactModal.classList.add('open'));
+    closeButton.focus();
+  };
+
+  const closeModal = () => {
+    contactModal.classList.remove('open');
+    document.body.style.overflow = '';
+
+    const finish = () => {
+      contactModal.hidden = true;
+      if (lastFocused) lastFocused.focus();
+    };
+
+    // Wait for the fade-out, but don't rely on the event firing.
+    const done = setTimeout(finish, 240);
+    contactModal.addEventListener('transitionend', () => {
+      clearTimeout(done);
+      finish();
+    }, { once: true });
+  };
+
+  contactTriggers.forEach((trigger) => {
+    trigger.addEventListener('click', (event) => {
+      event.preventDefault();
+      openModal();
+    });
+  });
+
+  closeButton.addEventListener('click', closeModal);
+  contactModal.querySelector('.modal-dismiss').addEventListener('click', closeModal);
+
+  // Click outside the panel dismisses.
+  contactModal.addEventListener('click', (event) => {
+    if (!panel.contains(event.target)) closeModal();
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !contactModal.hidden) closeModal();
+
+    // Keep tabbing inside the dialog while it is open.
+    if (event.key === 'Tab' && !contactModal.hidden) {
+      const focusable = panel.querySelectorAll('a[href], button');
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+  });
+}
+
 // Support form. GitHub Pages is static hosting and cannot process a POST, so
 // instead of pretending to send, we hand the message off to the user's email
 // client. Replace with a real endpoint when one exists.
