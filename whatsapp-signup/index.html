@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Connect WhatsApp — A SALOON</title>
+<!--
+  Meta Embedded Signup bridge page — served at asaloon.com/whatsapp-signup.
+
+  Kept as a directory with an index.html so the extensionless URL resolves: the SalonOS app
+  opens /whatsapp-signup with no extension, and this site is static hosting, which serves a
+  directory's index.html for that path. The same pattern as /privacy, /terms and /contact.
+
+  The A SALOON app opens this page in an in-app browser with:
+    ?appId=…&configId=…&graphVersion=v20.0&redirect=salonos://whatsapp-connected
+  It runs Meta's official Embedded Signup (Facebook JS SDK), collects the authorization
+  `code` (from FB.login) plus `waba_id` + `phone_number_id` (from Meta's postMessage event),
+  and redirects back to the app's deep link with those three values. The backend then
+  exchanges the code for a token — no secret ever lives on this page, and the salon never
+  types a token or an id.
+
+  Compatible with Meta's Embedded Signup docs:
+  https://developers.facebook.com/docs/whatsapp/embedded-signup
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, sans-serif;
+    background: #f4f6f9; color: #0a1017; }
+  @media (prefers-color-scheme: dark) { body { background: #080d13; color: #e9eef4; } .card { background: #0f1720 !important; border-color: rgba(233,238,244,.14) !important; } }
+  .card { width: min(440px, 92vw); background: #fff; border: 1px solid rgba(10,16,23,.12); border-radius: 16px; padding: 2rem; text-align: center; box-shadow: 0 20px 50px -30px rgba(10,16,23,.5); }
+  h1 { font-size: 1.35rem; margin: 0 0 .5rem; }
+  p { color: #5c6875; line-height: 1.55; margin: .5rem 0 0; font-size: .95rem; }
+  @media (prefers-color-scheme: dark) { p { color: #93a1b1; } }
+  .btn { margin-top: 1.4rem; display: inline-flex; align-items: center; gap: .5rem; background: #25D366; color: #06210f; border: 0; border-radius: 999px; padding: .8rem 1.5rem; font-size: 1rem; font-weight: 650; cursor: pointer; }
+  .btn[disabled] { opacity: .6; cursor: default; }
+  .spinner { width: 22px; height: 22px; border: 3px solid rgba(11,95,255,.25); border-top-color: #0b5fff; border-radius: 50%; animation: spin .8s linear infinite; margin: 1.2rem auto 0; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .ok { color: #166a4d; font-weight: 650; }
+  .err { color: #b23b3b; font-weight: 650; }
+  .mark { font-weight: 800; letter-spacing: .06em; }
+  .mark span { color: #0b5fff; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="mark">A<span>&nbsp;</span>SALOON</div>
+
+    <div id="intro">
+      <h1>Connect your WhatsApp Business</h1>
+      <p>You'll sign in with Meta, pick your WhatsApp Business account and number, and approve access. Nothing is typed by hand.</p>
+      <button class="btn" id="connectBtn" disabled>Loading…</button>
+    </div>
+
+    <div id="working" class="hidden">
+      <h1>Finishing up…</h1>
+      <p>Securing your connection with Meta.</p>
+      <div class="spinner"></div>
+    </div>
+
+    <div id="done" class="hidden">
+      <h1 class="ok">✓ Connected</h1>
+      <p>Your WhatsApp Business account is linked. Returning you to A SALOON…</p>
+    </div>
+
+    <div id="failed" class="hidden">
+      <h1 class="err">Couldn't connect</h1>
+      <p id="failMsg">The connection was cancelled. You can close this window and try again.</p>
+      <button class="btn" id="retryBtn" style="background:#0b5fff;color:#fff">Try again</button>
+    </div>
+  </div>
+
+<script>
+  (function () {
+    var q = new URLSearchParams(location.search);
+    var appId = q.get('appId');
+    var configId = q.get('configId');
+    var version = q.get('graphVersion') || 'v20.0';
+    var redirect = q.get('redirect') || 'salonos://whatsapp-connected';
+
+    var code = null, wabaId = null, phoneNumberId = null, finished = false;
+
+    function show(id) {
+      ['intro', 'working', 'done', 'failed'].forEach(function (s) {
+        document.getElementById(s).classList.toggle('hidden', s !== id);
+      });
+    }
+    function fail(msg) {
+      if (finished) return;
+      document.getElementById('failMsg').textContent = msg || 'Something went wrong. Please try again.';
+      show('failed');
+    }
+    // Redirect back to the app once we have all three values.
+    function tryFinish() {
+      if (finished || !code || !wabaId || !phoneNumberId) return;
+      finished = true;
+      show('done');
+      var u = redirect + (redirect.indexOf('?') === -1 ? '?' : '&') +
+        'code=' + encodeURIComponent(code) +
+        '&wabaId=' + encodeURIComponent(wabaId) +
+        '&phoneNumberId=' + encodeURIComponent(phoneNumberId);
+      setTimeout(function () { location.href = u; }, 1200);
+    }
+
+    // Meta delivers waba_id + phone_number_id via postMessage during the flow.
+    window.addEventListener('message', function (event) {
+      // Anchored to a label boundary, not merely to the end of the string. `/facebook\.com$/`
+      // also accepts evil-facebook.com and notfacebook.com, which is the whole point of
+      // checking the origin at all: this handler is what accepts the WABA and phone number
+      // ids that get sent back to the app.
+      if (!/(^|\.)facebook\.com$/.test(event.origin.replace(/^https?:\/\//, ''))) return;
+      var data;
+      try { data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data; } catch (e) { return; }
+      if (!data || data.type !== 'WA_EMBEDDED_SIGNUP') return;
+      if (data.event === 'FINISH') {
+        wabaId = data.data && data.data.waba_id;
+        phoneNumberId = data.data && data.data.phone_number_id;
+        show('working');
+        tryFinish();
+      } else if (data.event === 'CANCEL') {
+        fail('The connection was cancelled before it finished. You can try again.');
+      }
+    });
+
+    function launch() {
+      if (!window.FB) return fail('Could not load Meta. Check your connection and try again.');
+      show('working');
+      FB.login(function (response) {
+        if (response.authResponse && response.authResponse.code) {
+          code = response.authResponse.code;
+          tryFinish();
+          // Guard: if the FINISH message never arrives, don't hang forever.
+          setTimeout(function () { if (!finished) fail('Meta didn’t return your WhatsApp number. Please try again.'); }, 15000);
+        } else {
+          fail('Meta sign-in was cancelled or denied.');
+        }
+      }, { config_id: configId, response_type: 'code', override_default_response_type: true, extras: { setup: {}, featureType: '', sessionInfoVersion: '3' } });
+    }
+
+    document.getElementById('connectBtn').addEventListener('click', launch);
+    document.getElementById('retryBtn').addEventListener('click', function () { location.reload(); });
+
+    if (!appId || !configId) {
+      fail('This link is missing its setup details. Please reopen from the A SALOON app.');
+      return;
+    }
+
+    // Load the Facebook JS SDK, then enable the button.
+    window.fbAsyncInit = function () {
+      FB.init({ appId: appId, autoLogAppEvents: true, xfbml: false, version: version });
+      var btn = document.getElementById('connectBtn');
+      btn.disabled = false;
+      btn.textContent = 'Connect WhatsApp';
+    };
+    (function (d, s, id) {
+      var js, fjs = d.getElementsByTagName(s)[0];
+      if (d.getElementById(id)) return;
+      js = d.createElement(s); js.id = id; js.src = 'https://connect.facebook.net/en_US/sdk.js';
+      js.onerror = function () { fail('Could not load Meta. Check your connection and try again.'); };
+      fjs.parentNode.insertBefore(js, fjs);
+    })(document, 'script', 'facebook-jssdk');
+  })();
+</script>
+</body>
+</html>
