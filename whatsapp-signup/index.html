@@ -82,6 +82,11 @@
     var redirect = q.get('redirect') || 'salonos://whatsapp-connected';
 
     var code = null, wabaId = null, phoneNumberId = null, finished = false;
+    // What Meta sent, as an event name and field NAMES only — shown on failure so a stuck
+    // signup can be diagnosed without anyone reading a token out of a browser console.
+    // Initialised, not merely assigned later: the failure branch reads it, and an undeclared
+    // read would throw a ReferenceError and leave the page hanging with nothing on screen.
+    var sawFinish = '';
 
     function show(id) {
       ['intro', 'working', 'done', 'failed'].forEach(function (s) {
@@ -93,15 +98,23 @@
       document.getElementById('failMsg').textContent = msg || 'Something went wrong. Please try again.';
       show('failed');
     }
-    // Redirect back to the app once we have all three values.
+    // Redirect back to the app once Meta has told us who this is.
+    //
+    // PHONE NUMBER ID IS OPTIONAL. It used to be required, and that is what broke: a signup
+    // that completed successfully on Meta's side — their own screen said "Your account is
+    // connected" — arrived here with a code and a WABA id and no phone_number_id, so this
+    // function returned early every time, nothing ever set `finished`, and the fifteen-second
+    // guard below reported "Meta didn't return your WhatsApp number" for a connection that had
+    // worked. The WABA knows its own numbers; the server asks it.
     function tryFinish() {
-      if (finished || !code || !wabaId || !phoneNumberId) return;
+      if (finished || !code || !wabaId) return;
       finished = true;
       show('done');
       var u = redirect + (redirect.indexOf('?') === -1 ? '?' : '&') +
         'code=' + encodeURIComponent(code) +
-        '&wabaId=' + encodeURIComponent(wabaId) +
-        '&phoneNumberId=' + encodeURIComponent(phoneNumberId);
+        '&wabaId=' + encodeURIComponent(wabaId);
+      // Sent only when Meta actually supplied it, so the app can tell "absent" from "empty".
+      if (phoneNumberId) u += '&phoneNumberId=' + encodeURIComponent(phoneNumberId);
       setTimeout(function () { location.href = u; }, 1200);
     }
 
@@ -115,9 +128,13 @@
       var data;
       try { data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data; } catch (e) { return; }
       if (!data || data.type !== 'WA_EMBEDDED_SIGNUP') return;
-      if (data.event === 'FINISH') {
-        wabaId = data.data && data.data.waba_id;
-        phoneNumberId = data.data && data.data.phone_number_id;
+      if (data.event === 'FINISH' || data.event === 'FINISH_ONLY_WABA' || data.event === 'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING') {
+        // Meta has more than one finishing event. FINISH_ONLY_WABA is the one that carries a
+        // WABA and no number at all, and treating it as "not finished" left the flow hanging.
+        wabaId = (data.data && data.data.waba_id) || wabaId;
+        phoneNumberId = (data.data && data.data.phone_number_id) || phoneNumberId;
+        // Field NAMES only, and ids that are not credentials. Never the code or a token.
+        sawFinish = data.event + ':' + Object.keys((data && data.data) || {}).sort().join(',');
         show('working');
         tryFinish();
       } else if (data.event === 'CANCEL') {
@@ -133,7 +150,17 @@
           code = response.authResponse.code;
           tryFinish();
           // Guard: if the FINISH message never arrives, don't hang forever.
-          setTimeout(function () { if (!finished) fail('Meta didn’t return your WhatsApp number. Please try again.'); }, 15000);
+          // Two very different problems used to share one message, which is why this took a
+          // trace to understand: Meta may never have sent a finishing event at all, or it sent
+          // one that did not name a WABA. Say which.
+          setTimeout(function () {
+            if (finished) return;
+            fail(
+              sawFinish
+                ? 'Meta finished without telling us which WhatsApp Business Account to use. Please try again. (' + sawFinish + ')'
+                : 'Meta did not finish the connection. Please try again.'
+            );
+          }, 15000);
         } else {
           fail('Meta sign-in was cancelled or denied.');
         }
