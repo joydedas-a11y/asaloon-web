@@ -70,6 +70,12 @@
       <h1 class="err">Couldn't connect</h1>
       <p id="failMsg">The connection was cancelled. You can close this window and try again.</p>
       <button class="btn" id="retryBtn" style="background:#0b5fff;color:#fff">Try again</button>
+      <!-- TEMPORARY DIAGNOSTIC. Remove once the completion event is understood.
+           Shows only origins, types, event names and FIELD NAMES — never a value, so no code,
+           token or secret can appear here or in a screenshot of it. -->
+      <pre id="diag" style="margin-top:18px;padding:12px;border-radius:8px;background:rgba(255,255,255,.06);
+        color:#cbd5e1;font:12px/1.5 ui-monospace,Menlo,monospace;text-align:left;white-space:pre-wrap;
+        word-break:break-word;user-select:text;-webkit-user-select:text"></pre>
     </div>
   </div>
 
@@ -96,6 +102,7 @@
     function fail(msg) {
       if (finished) return;
       document.getElementById('failMsg').textContent = msg || 'Something went wrong. Please try again.';
+      renderDiag();
       show('failed');
     }
     // Redirect back to the app once Meta has told us who this is.
@@ -117,6 +124,66 @@
       if (phoneNumberId) u += '&phoneNumberId=' + encodeURIComponent(phoneNumberId);
       setTimeout(function () { location.href = u; }, 1200);
     }
+
+    /**
+     * TEMPORARY DIAGNOSTIC — every postMessage this page receives, recorded safely.
+     *
+     * The handler below filters by origin and then by type, and both filters return silently.
+     * That is correct behaviour and useless for diagnosis: a message dropped for the wrong
+     * origin looks exactly like no message at all, which is precisely the state we are now in
+     * — Meta completes the signup and nothing reaches our completion path.
+     *
+     * So this records BEFORE any filtering. Names only: origin, whether the payload arrived as
+     * a string or an object, its `type` and `event`, and the KEYS of its data. Never a value,
+     * because the payload can carry an authorization code and this text ends up in a
+     * screenshot.
+     */
+    var seen = [];
+    function describeMessage(event) {
+      var origin = String(event.origin || '(none)');
+      var kind = typeof event.data;
+      var parsed = null;
+      var note = '';
+      if (kind === 'string') {
+        try { parsed = JSON.parse(event.data); } catch (e) { note = ' (string, not JSON)'; }
+      } else if (event.data && kind === 'object') {
+        parsed = event.data;
+      }
+      if (!parsed) return origin + ' | ' + kind + note;
+
+      var type = parsed.type == null ? '(no type)' : String(parsed.type);
+      var name = parsed.event == null ? '(no event)' : String(parsed.event);
+      var topKeys = Object.keys(parsed).sort().join(',') || '(none)';
+      var nested = parsed.data && typeof parsed.data === 'object'
+        ? Object.keys(parsed.data).sort().join(',') || '(none)'
+        : '(no data object)';
+      return origin + ' | ' + kind + ' | ' + type + ' / ' + name +
+        ' | keys: ' + topKeys + ' | data: ' + nested;
+    }
+    function renderDiag() {
+      var el = document.getElementById('diag');
+      if (!el) return;
+      // Defensive: fail() can be reached during initial evaluation, and a reordering that put
+      // it before this array existed would turn a diagnostic into a second bug.
+      var list = seen || [];
+      var lines = ['Meta events received: ' + list.length];
+      if (list.length === 0) {
+        lines.push('No WA_EMBEDDED_SIGNUP completion event received');
+        lines.push('(no postMessage arrived from any origin)');
+      } else {
+        var sawSignup = list.some(function (l) { return l.indexOf('WA_EMBEDDED_SIGNUP') !== -1; });
+        if (!sawSignup) lines.push('No WA_EMBEDDED_SIGNUP completion event received');
+        list.forEach(function (l, i) { lines.push((i + 1) + '. ' + l); });
+      }
+      lines.push('code from FB.login: ' + (code ? 'yes' : 'no'));
+      el.textContent = lines.join('\n');
+    }
+
+    // Records EVERY message, whatever its origin. Registered separately from the handler below
+    // so that filtering cannot hide anything from the diagnostic.
+    window.addEventListener('message', function (event) {
+      try { seen.push(describeMessage(event)); } catch (e) { seen.push('(could not describe a message)'); }
+    });
 
     // Meta delivers waba_id + phone_number_id via postMessage during the flow.
     window.addEventListener('message', function (event) {
