@@ -106,7 +106,7 @@
     // read would throw a ReferenceError and leave the page hanging with nothing on screen.
     var sawFinish = '';
 
-    var BUILD = 'diag-3';
+    var BUILD = 'diag-4';
 
     function show(id) {
       ['intro', 'working', 'done', 'failed'].forEach(function (s) {
@@ -156,13 +156,51 @@
      * screenshot.
      */
     var seen = [];
+    /**
+     * The leading token of a non-JSON string, but only when it is one we already know is inert.
+     *
+     * An allowlist rather than a denylist, because the failure mode of guessing wrong here is
+     * printing a credential onto a screen that gets photographed. Anything unrecognised is
+     * reported as unrecognised — the length and hash are enough to tell two messages apart and
+     * to confirm the same noise repeats, without revealing a byte of it.
+     */
+    var INERT_TOKENS = ['xd_action', 'xd_origin', '_FB_', 'FB_', 'fb_xd_fragment', '__fb', 'JSON_CALLBACK'];
+    function classifyToken(str) {
+      for (var i = 0; i < INERT_TOKENS.length; i++) {
+        if (str.lastIndexOf(INERT_TOKENS[i], 0) === 0) return ' token=' + INERT_TOKENS[i];
+      }
+      return ' token=(not allowlisted)';
+    }
+
+    /** A short SHA-256, so the same noise is recognisable across attempts. Never the content. */
+    function hashInto(index, str) {
+      if (!(window.crypto && window.crypto.subtle && window.TextEncoder)) return;
+      try {
+        window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(str)).then(function (buf) {
+          var hex = Array.prototype.map
+            .call(new Uint8Array(buf), function (b) { return ('0' + b.toString(16)).slice(-2); })
+            .join('');
+          if (seen[index]) seen[index] += ' sha=' + hex.slice(0, 12);
+        }).catch(function () {});
+      } catch (e) { /* a diagnostic must never break the page */ }
+    }
+
     function describeMessage(event) {
       var origin = String(event.origin || '(none)');
       var kind = typeof event.data;
       var parsed = null;
       var note = '';
       if (kind === 'string') {
-        try { parsed = JSON.parse(event.data); } catch (e) { note = ' (string, not JSON)'; }
+        try {
+          parsed = JSON.parse(event.data);
+        } catch (e) {
+          // NOT JSON. Classified, never quoted: this string comes from facebook.com and could
+          // carry anything, so the only things recorded are its length, a hash, and a leading
+          // token if — and only if — it matches a short list of known-harmless SDK markers.
+          // The question being answered is narrow: is this ordinary Facebook SDK cross-domain
+          // chatter, or the completion message in an unexpected shape?
+          note = ' (string, not JSON) len=' + event.data.length + classifyToken(event.data);
+        }
       } else if (event.data && kind === 'object') {
         parsed = event.data;
       }
@@ -210,7 +248,12 @@
     // Records EVERY message, whatever its origin. Registered separately from the handler below
     // so that filtering cannot hide anything from the diagnostic.
     window.addEventListener('message', function (event) {
-      try { seen.push(describeMessage(event)); } catch (e) { seen.push('(could not describe a message)'); }
+      try {
+        var index = seen.push(describeMessage(event)) - 1;
+        if (typeof event.data === 'string') hashInto(index, event.data);
+      } catch (e) {
+        seen.push('(could not describe a message)');
+      }
     });
 
     // Meta delivers waba_id + phone_number_id via postMessage during the flow.
@@ -259,7 +302,17 @@
         } else {
           fail('Meta sign-in was cancelled or denied.');
         }
-      }, { config_id: configId, response_type: 'code', override_default_response_type: true, extras: { setup: {}, featureType: '', sessionInfoVersion: '3' } });
+        // Exactly the options Meta's current implementation guide specifies, and nothing else.
+        // `featureType: ''` and `sessionInfoVersion: '3'` came from an older example: neither
+        // appears in the current guide, and the only documented value for featureType is
+        // "whatsapp_business_app_onboarding" for a feature we are not using. An empty string is
+        // not a documented value for anything, so it is gone rather than guessed at.
+      }, {
+        config_id: configId,
+        response_type: 'code',
+        override_default_response_type: true,
+        extras: { setup: {} },
+      });
     }
 
     document.getElementById('connectBtn').addEventListener('click', launch);
