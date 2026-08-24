@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
+<!-- This page is a one-shot callback whose logic changes while a problem is being diagnosed.
+     A cached copy is not merely stale, it is misleading: a fix looks like it did not work.
+     GitHub Pages sends `cache-control: max-age=600` and cannot be configured, so this is the
+     only lever available from inside the document. -->
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
+<meta http-equiv="Pragma" content="no-cache">
 <title>Connect WhatsApp — A SALOON</title>
 <!--
   Meta Embedded Signup bridge page — served at asaloon.com/whatsapp-signup.
@@ -45,7 +51,7 @@
   .hidden { display: none; }
 </style>
 </head>
-<body>
+<body style="overflow-y:auto;-webkit-overflow-scrolling:touch">
   <div class="card">
     <div class="mark">A<span>&nbsp;</span>SALOON</div>
 
@@ -69,13 +75,19 @@
     <div id="failed" class="hidden">
       <h1 class="err">Couldn't connect</h1>
       <p id="failMsg">The connection was cancelled. You can close this window and try again.</p>
-      <button class="btn" id="retryBtn" style="background:#0b5fff;color:#fff">Try again</button>
       <!-- TEMPORARY DIAGNOSTIC. Remove once the completion event is understood.
-           Shows only origins, types, event names and FIELD NAMES — never a value, so no code,
-           token or secret can appear here or in a screenshot of it. -->
-      <pre id="diag" style="margin-top:18px;padding:12px;border-radius:8px;background:rgba(255,255,255,.06);
+           Above the button on purpose: it is the reason this screen is being looked at, and
+           below a call-to-action is where things go unread. Names only — never a value, so no
+           code, token or secret can appear here or in a screenshot of it. -->
+      <pre id="diag" style="margin:14px 0;padding:12px;border-radius:8px;background:rgba(255,255,255,.06);
         color:#cbd5e1;font:12px/1.5 ui-monospace,Menlo,monospace;text-align:left;white-space:pre-wrap;
-        word-break:break-word;user-select:text;-webkit-user-select:text"></pre>
+        word-break:break-word;user-select:text;-webkit-user-select:text;max-height:46vh;overflow:auto"></pre>
+      <button class="btn" id="retryBtn" style="background:#0b5fff;color:#fff">Try again</button>
+      <!-- Which build the device actually ran. GitHub Pages serves this page with
+           `cache-control: max-age=600`, so an in-app browser can quietly show a ten-minute-old
+           copy — which is exactly what happened when the diagnostic "did not appear". If this
+           stamp is not the one you deployed, you are looking at a cached page, not a bug. -->
+      <p id="buildStamp" style="margin-top:14px;font-size:11px;opacity:.55"></p>
     </div>
   </div>
 
@@ -94,10 +106,15 @@
     // read would throw a ReferenceError and leave the page hanging with nothing on screen.
     var sawFinish = '';
 
+    var BUILD = 'diag-3';
+
     function show(id) {
       ['intro', 'working', 'done', 'failed'].forEach(function (s) {
         document.getElementById(s).classList.toggle('hidden', s !== id);
       });
+      // Rendered HERE rather than only in fail(), so every route to the failure screen carries
+      // the diagnostic — including any added later that forgets to call it.
+      if (id === 'failed') renderDiag();
     }
     function fail(msg) {
       if (finished) return;
@@ -161,6 +178,17 @@
         ' | keys: ' + topKeys + ' | data: ' + nested;
     }
     function renderDiag() {
+      try { renderDiagUnsafe(); } catch (e) {
+        // A diagnostic that throws hides the very thing it exists to show. Whatever happens,
+        // something must appear on that screen.
+        var el = document.getElementById('diag');
+        if (el) el.textContent = 'Diagnostic unavailable: ' + (e && e.message ? e.message : 'unknown error');
+      }
+      var stamp = document.getElementById('buildStamp');
+      if (stamp) stamp.textContent = 'build ' + BUILD;
+    }
+
+    function renderDiagUnsafe() {
       var el = document.getElementById('diag');
       if (!el) return;
       // Defensive: fail() can be reached during initial evaluation, and a reordering that put
