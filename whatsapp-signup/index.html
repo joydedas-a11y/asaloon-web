@@ -106,7 +106,7 @@
     // read would throw a ReferenceError and leave the page hanging with nothing on screen.
     var sawFinish = '';
 
-    var BUILD = 'diag-5-v3';
+    var BUILD = 'diag-6-shape';
 
     function show(id) {
       ['intro', 'working', 'done', 'failed'].forEach(function (s) {
@@ -172,6 +172,31 @@
       return ' token=(not allowlisted)';
     }
 
+    /**
+     * Does this unparseable string CONTAIN the completion event, in some encoding we do not read?
+     *
+     * This is the one question the previous diagnostic could not answer. "(string, not JSON)"
+     * tells us JSON.parse threw — it does not tell us whether the payload is Meta's completion
+     * message wrapped in something else, or unrelated SDK chatter. Those two call for opposite
+     * responses: the first is our parser's fault, the second means Meta never sent it.
+     *
+     * Answered with substring tests for known field NAMES, reported as yes/no. A boolean about
+     * whether a marker appears reveals nothing about any value beside it, so a code or token in
+     * the same string stays invisible. The shape hints are equally content-free: what the first
+     * character is, and whether it looks like a query string.
+     */
+    function shapeOf(str) {
+      var marks = [];
+      // The names Meta's own documented payload uses. If any appears, the message is ours and
+      // the encoding is the problem.
+      ['WA_EMBEDDED_SIGNUP', 'waba_id', 'phone_number_id', 'FINISH'].forEach(function (needle) {
+        if (str.indexOf(needle) !== -1) marks.push(needle);
+      });
+      var first = str.charAt(0);
+      var shape = first === '{' ? 'brace' : first === '[' ? 'bracket' : (str.indexOf('=') !== -1 && str.indexOf('&') !== -1) ? 'querystring' : 'other';
+      return ' shape=' + shape + ' marks=' + (marks.length ? marks.join('+') : 'none');
+    }
+
     /** A short SHA-256, so the same noise is recognisable across attempts. Never the content. */
     function hashInto(index, str) {
       if (!(window.crypto && window.crypto.subtle && window.TextEncoder)) return;
@@ -199,7 +224,7 @@
           // token if — and only if — it matches a short list of known-harmless SDK markers.
           // The question being answered is narrow: is this ordinary Facebook SDK cross-domain
           // chatter, or the completion message in an unexpected shape?
-          note = ' (string, not JSON) len=' + event.data.length + classifyToken(event.data);
+          note = ' (string, not JSON) len=' + event.data.length + classifyToken(event.data) + shapeOf(event.data);
         }
       } else if (event.data && kind === 'object') {
         parsed = event.data;
@@ -241,7 +266,20 @@
         if (!sawSignup) lines.push('No WA_EMBEDDED_SIGNUP completion event received');
         list.forEach(function (l, i) { lines.push((i + 1) + '. ' + l); });
       }
-      lines.push('code from FB.login: ' + (code ? 'yes' : 'no'));
+      lines.push('auth code received: ' + (code ? 'yes' : 'no'));
+      lines.push('wabaId received: ' + (wabaId ? 'yes' : 'no'));
+      lines.push('phoneNumberId received: ' + (phoneNumberId ? 'yes' : 'no'));
+      lines.push('FINISH detected: ' + (sawFinish ? sawFinish : 'no'));
+      // Named states, so a stuck flow says which half it is waiting on rather than leaving it
+      // to be inferred from three separate lines.
+      var state = finished
+        ? 'HANDOFF_COMPLETE'
+        : (code && wabaId)
+          ? 'READY_TO_HANDOFF'
+          : code
+            ? 'WAITING_FOR_EMBEDDED_SIGNUP'
+            : 'WAITING_FOR_CODE';
+      lines.push('state: ' + state);
       el.textContent = lines.join('\n');
     }
 
