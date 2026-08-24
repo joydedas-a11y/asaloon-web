@@ -106,7 +106,7 @@
     // read would throw a ReferenceError and leave the page hanging with nothing on screen.
     var sawFinish = '';
 
-    var BUILD = 'diag-6-shape';
+    var BUILD = 'diag-7-sessioninfo';
 
     function show(id) {
       ['intro', 'working', 'done', 'failed'].forEach(function (s) {
@@ -349,18 +349,18 @@
         config_id: configId,
         response_type: 'code',
         override_default_response_type: true,
-        // CONTROLLED EXPERIMENT (build diag-5-v3). Everything else about this call is unchanged.
+        // Asking for session information the way the parameter is actually named.
         //
-        // The dashboard configuration has now been verified by hand — Embedded Signup variation,
-        // Cloud API, WABA asset, both whatsapp_business_* permissions, asaloon.com in Allowed
-        // Domains for the JavaScript SDK, and the OAuth redirect URI — and login still returns a
-        // code while no WA_EMBEDDED_SIGNUP message ever arrives. So the remaining variable on
-        // this side is whether the session-information channel has to be asked for explicitly.
+        // `version: 'v3'` was a guess and it changed nothing. The parameter Embedded Signup
+        // documents for this is `sessionInfoVersion`, and here it is a NUMBER.
         //
-        // `version: 'v3'` requests it. featureType is deliberately NOT reintroduced: it was
-        // removed for being an undocumented empty value, and putting it back would make this two
-        // changes at once and the result unreadable.
-        extras: { version: 'v3', setup: {} },
+        // WORTH KNOWING BEFORE READING TOO MUCH INTO THIS: the very first deployed version of
+        // this page already carried `sessionInfoVersion: '3'` — as a STRING, alongside
+        // `featureType: ''` — and the completion event did not arrive then either. So the
+        // untested variable is narrow: a numeric 3, without the empty featureType beside it.
+        // If this fails too, the parameter is not the problem and the remaining candidate is
+        // Meta-side eligibility.
+        extras: { setup: {}, sessionInfoVersion: 3 },
       });
     }
 
